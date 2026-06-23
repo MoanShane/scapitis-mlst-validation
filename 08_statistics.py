@@ -1,335 +1,413 @@
 #!/usr/bin/env python3
 # =============================================================
-# Script 08: Comparative phylogenetic metrics
+# Script 08: Three-way statistical comparison
+#   (6-gene MLST vs 7-gene MLST vs wgSNP, validated against cgMLST)
 # =============================================================
-# Computes all 9 metrics for Table 3:
-#   (A) Mantel test (rho, p-value; 9,999 permutations)
-#   (B) Robinson-Foulds distance and normalised RF
-#   (C) Clustering Information Distance (CID)
-#   (D) Bootstrap support: median, %>=70, %>=90
-#   (E) Parsimony-informative sites (PIS, count and %)
-#   (F) Resolution index
-#
 # Usage:
 #   python 08_statistics.py \
-#       --tree_6gene tree_6gene_620.treefile \
-#       --tree_7gene tree_7gene_620.treefile \
-#       --tree_wgsnp wgsnp_620.treefile \
-#       --align_6gene concat_6gene_620.fasta \
-#       --align_7gene concat_7gene_620.fasta \
-#       --output results/
+#       --tree_6gene PATH --tree_7gene PATH --tree_wgsnp PATH \
+#       --st_6gene PATH --st_7gene PATH --cgmlst PATH \
+#       --output DIR
 #
-# Requirements: Biopython, NumPy, SciPy, dendropy, treeswift
+# Computes the 9 head-to-head metrics reported in the manuscript:
+#   1. Mantel correlation (patristic distance, vs wgSNP)
+#   2. Robinson-Foulds distance (vs wgSNP)
+#   3. Normalised RF distance (vs wgSNP)
+#   4. Clustering information distance, CID (vs wgSNP)
+#   5. Internal node count
+#   6. Resolution index
+#   7. Median bootstrap support
+#   8. Proportion of nodes with bootstrap >= 70%
+#   9. Adjusted Rand Index (ARI) vs cgMLST cluster assignment
+#
+# IMPORTANT — two pitfalls fixed in this version:
+#
+#   (a) Missing-data exclusion: ST assignment CSVs produced by
+#       04_extract_mlst.py mark strains with incomplete locus
+#       coverage as ST == "NA" (has_missing_data == "yes"). These
+#       strains MUST be excluded before computing ARI — including
+#       them (even inadvertently) fragments true alleles and
+#       collapses ARI from ~0.93 down to ~0.75.
+#
+#   (b) pandas read_csv() pitfall: by default, pandas treats the
+#       literal string "NA" as a missing-value marker and silently
+#       converts it to float NaN. A filter such as
+#       `df[df["ST"] != "NA"]` will therefore match EVERYTHING
+#       (since NaN != "NA" is always True), silently failing to
+#       exclude anything. This script reads ST assignment CSVs with
+#       keep_default_na=False, na_values=[] specifically to avoid
+#       this, then filters on the literal string "NA" explicitly.
+#
+# Requirements: Biopython 1.79, NumPy 1.21, SciPy 1.7,
+#               scikit-learn 1.0, pandas 1.3
 # =============================================================
 
 import argparse
-import csv
-import warnings
+import sys
+import time
 from pathlib import Path
 
 import numpy as np
-from scipy.stats import pearsonr
-from Bio import Phylo, SeqIO, AlignIO
-from io import StringIO
-from collections import defaultdict
+import pandas as pd
+from scipy import stats
+from sklearn.metrics import adjusted_rand_score
+from Bio import Phylo
 
-warnings.filterwarnings("ignore")
+sys.setrecursionlimit(10000)
 
 
-# ═══════════════════════════════════════════════════════════
-# A. Mantel Test
-# ═══════════════════════════════════════════════════════════
-def patristic_distances(tree):
-    """Compute pairwise patristic distance matrix from tree."""
-    tips = [c.name for c in tree.get_terminals()]
-    n    = len(tips)
-    idx  = {t: i for i, t in enumerate(tips)}
+def load_st_assignments(csv_path, st_col="ST"):
+    """
+    Load an ST assignment CSV produced by 04_extract_mlst.py,
+    correctly handling the literal string "NA" used to flag
+    strains with missing locus data.
+
+    Returns a DataFrame with rows for has_missing_data == "yes"
+    already removed.
+    """
+    df = pd.read_csv(csv_path, keep_default_na=False, na_values=[])
+    df["strain"] = df["strain"].astype(str).str.strip()
+
+    if "has_missing_data" in df.columns:
+        n_total = len(df)
+        df = df[df["has_missing_data"] != "yes"].copy()
+        n_excluded = n_total - len(df)
+        if n_excluded > 0:
+            print(f"  {csv_path.name}: excluded {n_excluded} strain(s) "
+                  f"with missing locus data; {len(df)} remain")
+    else:
+        # Fallback for CSVs without the has_missing_data column —
+        # still guard against the literal "NA" string in the ST column.
+        df = df[df[st_col] != "NA"].copy()
+
+    return df
+
+
+def patristic_distances(tree_path, target_set):
+    """Compute pairwise patristic distance matrix for a pruned tree."""
+    tree = Phylo.read(tree_path, "newick")
+    all_t = [t.name for t in tree.get_terminals()]
+    for name in all_t:
+        if name not in target_set:
+            tree.prune(name)
+
+    terminals = tree.get_terminals()
+    names = [t.name for t in terminals]
+    depths = {}
+    ancestors = {}
+
+    def build(clade, path, depth):
+        bl = clade.branch_length or 0.0
+        d = depth + bl
+        depths[id(clade)] = d
+        new_path = path + [id(clade)]
+        if clade.is_terminal():
+            ancestors[clade.name] = new_path
+        else:
+            for c in clade.clades:
+                build(c, new_path, d)
+
+    build(tree.root, [], 0.0)
+
+    n = len(names)
     dist = np.zeros((n, n))
+    for i, na in enumerate(names):
+        pa = set(ancestors[na])
+        da = depths[ancestors[na][-1]]
+        for j, nb in enumerate(names):
+            if j <= i:
+                continue
+            pb = ancestors[nb]
+            lca = next((x for x in reversed(pb) if x in pa), None)
+            db = depths[ancestors[nb][-1]]
+            lca_d = depths[lca] if lca else 0.0
+            d = da + db - 2 * lca_d
+            dist[i, j] = dist[j, i] = d
 
-    for i, t1 in enumerate(tips):
-        for j, t2 in enumerate(tips):
-            if i < j:
-                d = tree.distance(t1, t2)
-                dist[i, j] = dist[j, i] = d
-    return tips, dist
+    idx = {nm: i for i, nm in enumerate(names)}
+    return names, dist, idx
 
 
-def mantel_test(m1, m2, n_perm=9999, seed=42):
-    """
-    Mantel test: correlation between upper triangles of
-    two symmetric distance matrices.
-    Returns: rho (Pearson r), p-value (one-tailed, > obs)
-    """
+def reorder_matrix(names, dist, order):
+    idx = {nm: i for i, nm in enumerate(names)}
+    n = len(order)
+    m = np.zeros((n, n))
+    for i, a in enumerate(order):
+        for j, b in enumerate(order):
+            m[i, j] = dist[idx[a]][idx[b]]
+    return m
+
+
+def mantel_test(m1, m2, perms=9999, seed=42):
+    """Mantel test with permutation-based p-value."""
+    tri_idx = np.triu_indices(len(m1), k=1)
+    v1, v2 = m1[tri_idx], m2[tri_idx]
+    if v1.std() == 0 or v2.std() == 0:
+        return float("nan"), float("nan")
+    obs_r, _ = stats.pearsonr(v1, v2)
     rng = np.random.default_rng(seed)
-    idx = np.triu_indices(len(m1), k=1)
-    v1, v2 = m1[idx], m2[idx]
-    obs_r, _ = pearsonr(v1, v2)
-
     count = 0
-    for _ in range(n_perm):
-        perm = rng.permutation(len(m1))
-        pm   = m1[np.ix_(perm, perm)]
-        r, _ = pearsonr(pm[idx], v2)
+    for _ in range(perms):
+        p = rng.permutation(len(m1))
+        mp = m1[np.ix_(p, p)]
+        r, _ = stats.pearsonr(mp[tri_idx], v2)
         if r >= obs_r:
             count += 1
-
-    p_val = (count + 1) / (n_perm + 1)
-    return obs_r, p_val
+    return obs_r, (count + 1) / (perms + 1)
 
 
-# ═══════════════════════════════════════════════════════════
-# B. Robinson-Foulds distance
-# ═══════════════════════════════════════════════════════════
-def get_bipartitions(tree):
-    """Get set of bipartitions (frozensets of leaf names)."""
-    tips = frozenset(c.name for c in tree.get_terminals())
-    biparts = set()
-    for clade in tree.find_clades(order="level"):
-        if clade == tree.root:
-            continue
-        leaves = frozenset(c.name for c in clade.get_terminals())
-        if len(leaves) > 1 and leaves != tips:
-            biparts.add(leaves)
-    return biparts
-
-
-def rf_distance(tree1, tree2):
-    """Robinson-Foulds distance and normalised RF."""
-    b1 = get_bipartitions(tree1)
-    b2 = get_bipartitions(tree2)
-    rf = len(b1.symmetric_difference(b2))
-    norm_rf = rf / (len(b1) + len(b2)) if (len(b1) + len(b2)) > 0 else 0
-    return rf, norm_rf
-
-
-# ═══════════════════════════════════════════════════════════
-# C. Clustering Information Distance (CID)
-# Simplified implementation; use TreeDist R package for
-# the full implementation used in the paper.
-# ═══════════════════════════════════════════════════════════
-def clustering_info_distance(tree1, tree2):
-    """
-    Approximate CID based on Shannon entropy of bipartitions.
-    For full implementation, see Smith (2020) Bioinformatics
-    and the R package TreeDist.
-    """
-    import math
-
-    def entropy_biparts(tree):
-        tips = [c.name for c in tree.get_terminals()]
-        n = len(tips)
-        if n == 0:
-            return 0, {}
-        H = 0
-        bp_probs = {}
-        for clade in tree.find_clades():
-            leaves = [c.name for c in clade.get_terminals()]
-            k = len(leaves)
-            if 1 < k < n:
-                p = k / n
-                h = -p * math.log2(p) - (1-p) * math.log2(1-p)
-                H += h
-                bp_probs[frozenset(leaves)] = h
-        return H, bp_probs
-
-    H1, bp1 = entropy_biparts(tree1)
-    H2, bp2 = entropy_biparts(tree2)
-
-    # Mutual information approximation
-    shared = set(bp1.keys()) & set(bp2.keys())
-    MI = sum(min(bp1[k], bp2[k]) for k in shared)
-
-    # CID
-    joint_H = H1 + H2 - MI
-    cid = 1 - (MI / joint_H) if joint_H > 0 else 0
-    return cid
-
-
-# ═══════════════════════════════════════════════════════════
-# D. Bootstrap support
-# ═══════════════════════════════════════════════════════════
-def bootstrap_stats(tree):
-    """Median BS, %>=70, %>=90."""
-    bs_vals = []
+def get_bipartitions(tree_path, common_set):
+    tree = Phylo.read(tree_path, "newick")
+    all_t = [t.name for t in tree.get_terminals()]
+    for nm in all_t:
+        if nm not in common_set:
+            tree.prune(nm)
+    leaves = frozenset(t.name for t in tree.get_terminals())
+    n = len(leaves)
+    bips = []
     for clade in tree.find_clades():
-        if clade.confidence is not None:
-            bs_vals.append(clade.confidence)
-    if not bs_vals:
-        return None, None, None
-    bs = np.array(bs_vals)
-    return (np.median(bs),
-            np.mean(bs >= 70) * 100,
-            np.mean(bs >= 90) * 100)
+        if clade.is_terminal():
+            continue
+        sub = frozenset(t.name for t in clade.get_terminals())
+        comp = leaves - sub
+        if len(sub) > 1 and len(comp) > 1:
+            p = len(sub) / n
+            bips.append((frozenset([sub, comp]), p))
+    return bips, n
 
 
-# ═══════════════════════════════════════════════════════════
-# E. Parsimony-informative sites (PIS)
-# ═══════════════════════════════════════════════════════════
-def count_pis(fasta_file):
-    """Count parsimony-informative sites in alignment."""
-    aln = AlignIO.read(fasta_file, "fasta")
-    n_seq  = len(aln)
-    n_cols = aln.get_alignment_length()
-    pis = 0
-
-    for col in range(n_cols):
-        column = [str(aln[i].seq[col]).upper()
-                  for i in range(n_seq)]
-        # Count character states (excluding gaps and N)
-        counts = defaultdict(int)
-        for c in column:
-            if c not in ("-", "N", "?"):
-                counts[c] += 1
-        # PIS: >= 2 states, each in >= 2 sequences
-        informative = [v for v in counts.values() if v >= 2]
-        if len(informative) >= 2:
-            pis += 1
-
-    return pis, n_cols, pis / n_cols * 100 if n_cols > 0 else 0
+def rf_distance(tree_path_1, tree_path_2, common_set):
+    """Robinson-Foulds distance and normalised RF."""
+    bips1, _ = get_bipartitions(tree_path_1, common_set)
+    bips2, _ = get_bipartitions(tree_path_2, common_set)
+    b1 = {b for b, _ in bips1}
+    b2 = {b for b, _ in bips2}
+    rf = len(b1.symmetric_difference(b2))
+    norm = rf / (len(b1) + len(b2)) if (len(b1) + len(b2)) else 0
+    return rf, norm
 
 
-# ═══════════════════════════════════════════════════════════
-# F. Resolution index
-# ═══════════════════════════════════════════════════════════
-def resolution_index(tree):
-    """RI = n_internal / (n_leaves - 1)."""
-    n_leaves   = len(list(tree.get_terminals()))
-    n_internal = len([c for c in tree.find_clades()
-                      if not c.is_terminal()])
-    max_internal = n_leaves - 1
-    return n_internal, max_internal, \
-           n_internal / max_internal if max_internal > 0 else 0
+def cid_distance(tree_path_1, tree_path_2, common_set):
+    """Clustering Information Distance (Smith 2020)."""
+    bips1, n = get_bipartitions(tree_path_1, common_set)
+    bips2, _ = get_bipartitions(tree_path_2, common_set)
+    set1 = {b for b, _ in bips1}
+    set2 = {b for b, _ in bips2}
+    shared = set1 & set2
+
+    def entropy(bips):
+        h = 0
+        for _, p in bips:
+            if 0 < p < 1:
+                h += -(p * np.log2(p) + (1 - p) * np.log2(1 - p))
+        return h
+
+    h1 = entropy(bips1)
+    h2 = entropy(bips2)
+    bips1_dict = {b: p for b, p in bips1}
+    bips2_dict = {b: p for b, p in bips2}
+
+    h_shared = 0
+    for b in shared:
+        p1 = bips1_dict[b]
+        p2 = bips2_dict[b]
+        p_avg = (p1 + p2) / 2
+        if 0 < p_avg < 1:
+            h_shared += -(p_avg * np.log2(p_avg) +
+                          (1 - p_avg) * np.log2(1 - p_avg))
+
+    if h1 + h2 == 0:
+        return 0.0
+    return max(0.0, min(1.0, 1 - 2 * h_shared / (h1 + h2)))
 
 
-# ═══════════════════════════════════════════════════════════
-# MAIN
-# ═══════════════════════════════════════════════════════════
+def bootstrap_stats(contree_path, common_set):
+    tree = Phylo.read(contree_path, "newick")
+    all_t = [t.name for t in tree.get_terminals()]
+    for name in all_t:
+        if name not in common_set:
+            tree.prune(name)
+    bs = np.array([
+        float(c.confidence)
+        for c in tree.find_clades()
+        if not c.is_terminal() and c.confidence is not None
+    ])
+    if len(bs) == 0:
+        return {"n": 0, "median": 0, "gt70": 0, "gt90": 0}
+    return {
+        "n": len(bs),
+        "median": np.median(bs),
+        "gt70": (bs >= 70).sum() / len(bs) * 100,
+        "gt90": (bs >= 90).sum() / len(bs) * 100,
+    }
+
+
+def resolution_index(treefile, common_set):
+    tree = Phylo.read(treefile, "newick")
+    all_t = [t.name for t in tree.get_terminals()]
+    for nm in all_t:
+        if nm not in common_set:
+            tree.prune(nm)
+    n_leaves = len(tree.get_terminals())
+    n_int = len(tree.get_nonterminals())
+    max_int = n_leaves - 1
+    ri = n_int / max_int * 100 if max_int > 0 else 0
+    return n_int, max_int, ri
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Compute comparative phylogenetic metrics")
+        description="Three-way MLST/wgSNP/cgMLST statistical comparison")
     parser.add_argument("--tree_6gene", required=True)
     parser.add_argument("--tree_7gene", required=True)
     parser.add_argument("--tree_wgsnp", required=True)
-    parser.add_argument("--align_6gene", required=True)
-    parser.add_argument("--align_7gene", required=True)
+    parser.add_argument("--contree_6gene", default=None,
+                         help="6-gene .contree (bootstrap); defaults to "
+                              "tree_6gene with .treefile->.contree")
+    parser.add_argument("--contree_7gene", default=None)
+    parser.add_argument("--contree_wgsnp", default=None)
+    parser.add_argument("--st_6gene", required=True,
+                         help="6-gene st_assignments_final.csv from script 04")
+    parser.add_argument("--st_7gene", required=True,
+                         help="7-gene st_assignments_final.csv from script 04")
+    parser.add_argument("--cgmlst", required=True,
+                         help="Wang et al. (2022) cgMLST cluster/ST assignment CSV "
+                              "with columns: Accession, Wang_Cluster, Wang_ST")
     parser.add_argument("--output", required=True)
-    parser.add_argument("--n_perm", type=int, default=9999)
     args = parser.parse_args()
+
+    def default_contree(path):
+        return path.replace(".treefile", ".contree")
+
+    c6 = args.contree_6gene or default_contree(args.tree_6gene)
+    c7 = args.contree_7gene or default_contree(args.tree_7gene)
+    cw = args.contree_wgsnp or default_contree(args.tree_wgsnp)
 
     out_dir = Path(args.output)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    print("=== Comparative Phylogenetic Metrics ===")
-    print(f"Mantel permutations: {args.n_perm:,}")
+    print("=" * 60)
+    print("THREE-WAY STATISTICAL COMPARISON")
+    print("=" * 60)
 
-    # Load trees
-    print("\nLoading trees...")
-    t6 = Phylo.read(args.tree_6gene, "newick")
-    t7 = Phylo.read(args.tree_7gene, "newick")
-    tw = Phylo.read(args.tree_wgsnp, "newick")
+    # ── Step 1: common taxa ──────────────────────────────────────
+    print("\n[1] Checking taxa...")
+    s6 = set(t.name for t in Phylo.read(args.tree_6gene, "newick").get_terminals())
+    s7 = set(t.name for t in Phylo.read(args.tree_7gene, "newick").get_terminals())
+    sw = set(t.name for t in Phylo.read(args.tree_wgsnp, "newick").get_terminals())
+    sw -= {"Reference"}
+    common = sorted(s6 & s7 & sw)
+    common_set = set(common)
+    print(f"  6-gene taxa : {len(s6)}")
+    print(f"  7-gene taxa : {len(s7)}")
+    print(f"  wgSNP taxa  : {len(sw)}")
+    print(f"  Common      : {len(common)}")
 
-    # Get common taxa
-    tips6 = set(c.name for c in t6.get_terminals())
-    tips7 = set(c.name for c in t7.get_terminals())
-    tipsw = set(c.name for c in tw.get_terminals())
-    common = tips6 & tips7 & tipsw
-    print(f"Common taxa: {len(common)}")
+    # ── Step 2: patristic distances ──────────────────────────────
+    print("\n[2] Computing patristic distances...")
+    t0 = time.time()
+    pn6, pd6, _ = patristic_distances(args.tree_6gene, common_set)
+    print(f"  6-gene: {time.time()-t0:.0f}s")
+    t0 = time.time()
+    pn7, pd7, _ = patristic_distances(args.tree_7gene, common_set)
+    print(f"  7-gene: {time.time()-t0:.0f}s")
+    t0 = time.time()
+    pnw, pdw, _ = patristic_distances(args.tree_wgsnp, common_set)
+    print(f"  wgSNP:  {time.time()-t0:.0f}s")
 
-    # Prune to common taxa
-    def prune(tree, keep):
-        for tip in list(tree.get_terminals()):
-            if tip.name not in keep:
-                tree.prune(tip.name)
-        return tree
+    pd6_r = reorder_matrix(pn6, pd6, common)
+    pd7_r = reorder_matrix(pn7, pd7, common)
+    pdw_r = reorder_matrix(pnw, pdw, common)
 
-    t6 = prune(t6, common)
-    t7 = prune(t7, common)
-    tw = prune(tw, common)
+    # ── Step 3: Mantel test ──────────────────────────────────────
+    print("\n[3] Mantel test (9,999 permutations)...")
+    r_6w, p_6w = mantel_test(pd6_r, pdw_r)
+    r_7w, p_7w = mantel_test(pd7_r, pdw_r)
+    print(f"  6-gene vs wgSNP: rho={r_6w:.4f}, p={p_6w:.4f}")
+    print(f"  7-gene vs wgSNP: rho={r_7w:.4f}, p={p_7w:.4f}")
 
-    # Compute patristic distance matrices
-    print("Computing patristic distance matrices...")
-    tips6, d6 = patristic_distances(t6)
-    tips7, d7 = patristic_distances(t7)
-    tipsw, dw = patristic_distances(tw)
+    # ── Step 4: RF distance ──────────────────────────────────────
+    print("\n[4] Robinson-Foulds distance...")
+    rf_6w, nrf_6w = rf_distance(args.tree_6gene, args.tree_wgsnp, common_set)
+    rf_7w, nrf_7w = rf_distance(args.tree_7gene, args.tree_wgsnp, common_set)
+    print(f"  6-gene vs wgSNP: RF={rf_6w}, norm={nrf_6w:.4f}")
+    print(f"  7-gene vs wgSNP: RF={rf_7w}, norm={nrf_7w:.4f}")
 
-    # Align matrices (same tip order)
-    tip_order = sorted(common)
-    idx6 = [tips6.index(t) for t in tip_order]
-    idx7 = [tips7.index(t) for t in tip_order]
-    idxw = [tipsw.index(t) for t in tip_order]
-    d6 = d6[np.ix_(idx6, idx6)]
-    d7 = d7[np.ix_(idx7, idx7)]
-    dw = dw[np.ix_(idxw, idxw)]
+    # ── Step 5: CID ───────────────────────────────────────────────
+    print("\n[5] Clustering Information Distance...")
+    cid_6w = cid_distance(args.tree_6gene, args.tree_wgsnp, common_set)
+    cid_7w = cid_distance(args.tree_7gene, args.tree_wgsnp, common_set)
+    print(f"  6-gene vs wgSNP: CID={cid_6w:.4f}")
+    print(f"  7-gene vs wgSNP: CID={cid_7w:.4f}")
 
-    results = {}
+    # ── Step 6: Bootstrap support ────────────────────────────────
+    print("\n[6] Bootstrap support...")
+    bs6 = bootstrap_stats(c6, common_set)
+    bs7 = bootstrap_stats(c7, common_set)
+    bsw = bootstrap_stats(cw, common_set)
+    print(f"  {'Metric':<20} {'6-gene':>10} {'7-gene':>10} {'wgSNP':>10}")
+    for k, label in [("n", "Internal nodes"), ("median", "Median BS (%)"),
+                      ("gt70", "Nodes BS>=70 (%)"), ("gt90", "Nodes BS>=90 (%)")]:
+        fmt = ".0f" if k == "n" else ".1f"
+        print(f"  {label:<20} {bs6[k]:>10{fmt}} {bs7[k]:>10{fmt}} {bsw[k]:>10{fmt}}")
 
-    # ── Mantel test ──────────────────────────────────────────
-    print("\nMantel tests (may take a few minutes)...")
-    r6w, p6w = mantel_test(d6, dw, args.n_perm)
-    r7w, p7w = mantel_test(d7, dw, args.n_perm)
-    print(f"  6-gene vs wgSNP: rho={r6w:.4f}, p={p6w:.4f}")
-    print(f"  7-gene vs wgSNP: rho={r7w:.4f}, p={p7w:.4f}")
-    results["mantel_rho_6_wgsnp"] = r6w
-    results["mantel_p_6_wgsnp"]   = p6w
-    results["mantel_rho_7_wgsnp"] = r7w
-    results["mantel_p_7_wgsnp"]   = p7w
+    # ── Step 7: Resolution Index ─────────────────────────────────
+    print("\n[7] Resolution Index...")
+    ni6, mx6, ri6 = resolution_index(args.tree_6gene, common_set)
+    ni7, mx7, ri7 = resolution_index(args.tree_7gene, common_set)
+    niw, mxw, riw = resolution_index(args.tree_wgsnp, common_set)
+    print(f"  6-gene: RI={ri6:.1f}%   7-gene: RI={ri7:.1f}%   wgSNP: RI={riw:.1f}%")
 
-    # ── RF distance ──────────────────────────────────────────
-    print("\nRF distances...")
-    rf6w,  nrf6w  = rf_distance(t6, tw)
-    rf7w,  nrf7w  = rf_distance(t7, tw)
-    rf67,  nrf67  = rf_distance(t6, t7)
-    print(f"  6-gene vs wgSNP: RF={rf6w}, nRF={nrf6w:.4f}")
-    print(f"  7-gene vs wgSNP: RF={rf7w}, nRF={nrf7w:.4f}")
-    print(f"  6-gene vs 7-gene: RF={rf67}, nRF={nrf67:.4f}")
-    results["RF_6_wgsnp"]  = rf6w;  results["nRF_6_wgsnp"]  = nrf6w
-    results["RF_7_wgsnp"]  = rf7w;  results["nRF_7_wgsnp"]  = nrf7w
-    results["RF_6_7"]      = rf67;  results["nRF_6_7"]      = nrf67
+    # ── Step 8: ARI vs cgMLST cluster ───────────────────────────────
+    print("\n[8] ARI vs cgMLST cluster...")
+    wang = pd.read_csv(args.cgmlst)
+    wang["Accession"] = wang["Accession"].astype(str).str.strip()
 
-    # ── CID ──────────────────────────────────────────────────
-    print("\nClustering information distance...")
-    cid6w = clustering_info_distance(t6, tw)
-    cid7w = clustering_info_distance(t7, tw)
-    print(f"  6-gene vs wgSNP: CID={cid6w:.4f}")
-    print(f"  7-gene vs wgSNP: CID={cid7w:.4f}")
-    results["CID_6_wgsnp"] = cid6w
-    results["CID_7_wgsnp"] = cid7w
+    your6 = load_st_assignments(Path(args.st_6gene))
+    m6 = pd.merge(your6, wang, left_on="strain", right_on="Accession")
+    ari_6_cg = adjusted_rand_score(
+        m6["Wang_Cluster"].astype(str), m6["ST"].astype(str))
+    print(f"  6-gene: {len(your6)} strains with complete locus data; "
+          f"{len(m6)} overlap with cgMLST")
+    print(f"  6-gene vs cgMLST Cluster ARI: {ari_6_cg:.4f}")
 
-    # ── Bootstrap ────────────────────────────────────────────
-    print("\nBootstrap support statistics...")
-    for name, tree in [("6gene", t6), ("7gene", t7), ("wgsnp", tw)]:
-        med, pct70, pct90 = bootstrap_stats(tree)
-        print(f"  {name}: median={med:.1f}%, "
-              f">=70%: {pct70:.1f}%, >=90%: {pct90:.1f}%")
-        results[f"bs_median_{name}"]  = med
-        results[f"bs_pct70_{name}"]   = pct70
-        results[f"bs_pct90_{name}"]   = pct90
+    your7 = load_st_assignments(Path(args.st_7gene))
+    m7 = pd.merge(your7, wang, left_on="strain", right_on="Accession")
+    ari_7_cg = adjusted_rand_score(
+        m7["Wang_Cluster"].astype(str), m7["ST"].astype(str))
+    print(f"  7-gene: {len(your7)} strains with complete locus data; "
+          f"{len(m7)} overlap with cgMLST")
+    print(f"  7-gene vs cgMLST Cluster ARI: {ari_7_cg:.4f}")
 
-    # ── PIS ──────────────────────────────────────────────────
-    print("\nParsimony-informative sites...")
-    pis6, len6, pct6 = count_pis(args.align_6gene)
-    pis7, len7, pct7 = count_pis(args.align_7gene)
-    print(f"  6-gene: {pis6} PIS / {len6} bp ({pct6:.2f}%)")
-    print(f"  7-gene: {pis7} PIS / {len7} bp ({pct7:.2f}%)")
-    results["PIS_6"] = pis6; results["PIS_pct_6"] = pct6
-    results["PIS_7"] = pis7; results["PIS_pct_7"] = pct7
+    # ── Final table ───────────────────────────────────────────────
+    print(f"\n{'='*70}")
+    print("FINAL NINE-METRIC TABLE")
+    print(f"{'='*70}")
+    rows = [
+        ("Common taxa for comparison", len(common), len(common), len(common)),
+        ("Mantel rho (vs wgSNP)", r_6w, r_7w, "ref"),
+        ("RF distance (vs wgSNP)", rf_6w, rf_7w, "ref"),
+        ("Norm. RF (vs wgSNP)", nrf_6w, nrf_7w, "ref"),
+        ("CID (vs wgSNP)", cid_6w, cid_7w, "ref"),
+        ("Internal nodes", bs6["n"], bs7["n"], bsw["n"]),
+        ("Resolution Index (%)", ri6, ri7, riw),
+        ("Median bootstrap (%)", bs6["median"], bs7["median"], bsw["median"]),
+        ("Nodes BS>=70 (%)", bs6["gt70"], bs7["gt70"], bsw["gt70"]),
+        ("ARI vs cgMLST cluster", ari_6_cg, ari_7_cg, "n/a"),
+    ]
+    print(f"  {'Metric':<30} {'6-gene':>12} {'7-gene':>12} {'wgSNP':>12}")
+    for label, v6, v7, vw in rows:
+        fmt_f = lambda v: f"{v:.4f}" if isinstance(v, float) else str(v)
+        print(f"  {label:<30} {fmt_f(v6):>12} {fmt_f(v7):>12} {fmt_f(vw):>12}")
 
-    # ── Resolution index ─────────────────────────────────────
-    print("\nResolution index...")
-    for name, tree in [("6gene", t6), ("7gene", t7), ("wgsnp", tw)]:
-        ni, max_ni, ri = resolution_index(tree)
-        print(f"  {name}: {ni}/{max_ni} ({ri*100:.1f}%)")
-        results[f"RI_{name}"] = ri
-
-    # ── Save results ─────────────────────────────────────────
+    df_out = pd.DataFrame(
+        [(r[0], str(r[1]), str(r[2]), str(r[3])) for r in rows],
+        columns=["Metric", "6-gene", "7-gene", "wgSNP"])
     out_csv = out_dir / "comparison_metrics.csv"
-    with open(out_csv, "w", newline="") as f:
-        w = csv.writer(f)
-        w.writerow(["Metric", "Value"])
-        for k, v in results.items():
-            w.writerow([k, f"{v:.4f}" if isinstance(v, float) else v])
-
-    print(f"\n✓ Results saved: {out_csv}")
+    df_out.to_csv(out_csv, index=False)
+    print(f"\n✓ Saved: {out_csv}")
+    print("  Compare against expected_output/comparison_metrics_expected.csv "
+          "to verify your re-run reproduces the published numbers.")
 
 
 if __name__ == "__main__":
