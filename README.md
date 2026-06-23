@@ -21,7 +21,7 @@ strains).
 
 ---
 
-## ?? Important: missing-data handling (read before running)
+## ⚠️ Important: missing-data handling (read before running)
 
 This dataset contains genomes with genuinely incomplete locus coverage at
 one or more of the 7 MLST genes (most notably 41 strains in the
@@ -50,30 +50,30 @@ analysis.
 
 ```
 scapitis-mlst-validation/
-??? README.md
-??? LICENSE
-??? environment.yml                       # conda environment (pinned versions)
-??? requirements_python.txt               # pip-installable Python packages (pinned)
-??? 01_download_sra.sh                    # Download reads from SRA
-??? 02_assemble_genomes.sh                # de novo assembly (Shovill/SPAdes)
-??? 03_qc_check.sh                        # Assembly QC
-??? 04_extract_mlst.py                    # BLAST-based MLST allele extraction
-??                                           (6-gene and 7-gene; handles missing data)
-??? 05_align_concat.sh                    # MAFFT alignment + trimAl + concat
-??? 06_wgsnp_snippy.sh                    # Whole-genome SNP analysis (Snippy)
-??? 07_phylogeny_iqtree.sh                # IQ-TREE2 ML trees
-??? 08_statistics.py                      # Mantel/RF/CID/ARI/PIS/Bootstrap
-??                                           (9-metric three-way comparison)
-??? 09_provisional_st.py                  # pST definition and catalogue
-??? 10_12_concordance_mst_tanglegram.py   # cgMLST concordance + MST + tanglegram
-??? docs/
-??  ??? pipeline_overview.md              # Detailed pipeline description
-??? expected_output/
-    ??? comparison_metrics_expected.csv   # Reference values reported in the paper,
+├── README.md
+├── LICENSE
+├── environment.yml                       # conda environment (pinned versions)
+├── requirements_python.txt               # pip-installable Python packages (pinned)
+├── 01_download_sra.sh                    # Download reads from SRA
+├── 02_assemble_genomes.sh                # de novo assembly (Shovill/SPAdes)
+├── 03_qc_check.sh                        # Assembly QC
+├── 04_extract_mlst.py                    # BLAST-based MLST allele extraction
+│                                            (6-gene and 7-gene; handles missing data)
+├── 05_align_concat.sh                    # MAFFT alignment + trimAl + concat
+├── 06_wgsnp_snippy.sh                    # Whole-genome SNP analysis (Snippy)
+├── 07_phylogeny_iqtree.sh                # IQ-TREE2 ML trees
+├── 08_statistics.py                      # Mantel/RF/CID/ARI/PIS/Bootstrap
+│                                            (9-metric three-way comparison)
+├── 09_provisional_st.py                  # pST definition and catalogue
+├── 10_12_concordance_mst_tanglegram.py   # cgMLST concordance + MST + tanglegram
+├── docs/
+│   └── pipeline_overview.md              # Detailed pipeline description
+└── expected_output/
+    └── comparison_metrics_expected.csv   # Reference values reported in the paper,
                                              for verifying a successful re-run
 ```
 
-**Note:** steps 10??2 (cgMLST concordance, minimum spanning tree figure,
+**Note:** steps 10–12 (cgMLST concordance, minimum spanning tree figure,
 tanglegram) are implemented in a single combined script,
 `10_12_concordance_mst_tanglegram.py`, run with a `--step` flag to select
 which output to generate (see Usage below).
@@ -96,7 +96,7 @@ which output to generate (see Usage below).
 | IQ-TREE2    | 2.2.0   | Phylogenetic inference         |
 | Python      | 3.9     | Statistical analysis           |
 
-### Python packages (pinned ??see note on version sensitivity below)
+### Python packages (pinned — see note on version sensitivity below)
 
 ```
 biopython==1.79
@@ -126,7 +126,7 @@ re-run reproduces the published numbers; `environment.yml` and
 git clone https://github.com/MoanShane/scapitis-mlst-validation.git
 cd scapitis-mlst-validation
 
-# Create conda environment (recommended ??pins both Python and external tools)
+# Create conda environment (recommended — pins both Python and external tools)
 conda env create -f environment.yml
 conda activate scapitis_mlst
 
@@ -157,7 +157,8 @@ bash 03_qc_check.sh ${WORKDIR}
 
 # Step 4: Extract MLST alleles (6-gene and 7-gene)
 # NOTE: strains with incomplete locus coverage are flagged
-# has_missing_data=yes in the output and excluded from ST assignment ??# do not force-assign them an ST downstream.
+# has_missing_data=yes in the output and excluded from ST assignment —
+# do not force-assign them an ST downstream.
 python 04_extract_mlst.py \
     --assembly_dir ${WORKDIR}/assemblies \
     --scheme 6gene \
@@ -206,8 +207,8 @@ After Step 8, compare `${WORKDIR}/results/comparison_metrics.csv` against
 `expected_output/comparison_metrics_expected.csv`. The two should match
 within rounding tolerance (Mantel/RF/CID/ARI to 3 decimal places). If your
 seven-gene ARI vs cgMLST cluster comes out far below ~0.92 (e.g. in the
-0.7??.8 range), you have very likely hit the missing-data pitfall
-described above ??check that strains in `has_missing_data=yes` were
+0.7–0.8 range), you have very likely hit the missing-data pitfall
+described above — check that strains in `has_missing_data=yes` were
 correctly excluded before computing ARI.
 
 ---
@@ -216,7 +217,7 @@ correctly excluded before computing ARI.
 
 - Public genomes: BioProject PRJNA493527 and additional GenBank accessions
   (see Supplementary Table S2 in the manuscript)
-- YGH clinical isolates: GenBank accessions PZ469898?Z470071
+- YGH clinical isolates: GenBank accessions PZ469898–PZ470071
   (six separate BankIt submissions, one per gene: femA, ftsZ, gap, rpoB,
   pyrH, tuf)
 - Reference genome (wgSNP): *S. capitis* subsp. *capitis* DSM20326
