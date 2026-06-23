@@ -1,0 +1,11 @@
+Metric,6-gene,7-gene,wgSNP
+Common taxa for comparison,619,619,619
+Mantel rho (vs wgSNP),0.9449,0.9334,ref
+RF distance (vs wgSNP),1188,1194,ref
+Norm. RF (vs wgSNP),0.9643,0.9692,ref
+CID (vs wgSNP),0.9844,0.9923,ref
+Internal nodes,80,64,591
+Resolution Index (%),100.0,99.8,100.0
+Median bootstrap (%),64.5,63.5,100.0
+Nodes BS>=70 (%),46.3,43.8,82.7
+ARI vs cgMLST cluster,0.9102,0.9263,n/a
