@@ -1,141 +1,300 @@
-#!/usr/bin/env python3
-# =============================================================
-# Script 09: Provisional sequence type (pST) definition
-# =============================================================
-# Defines 91 pSTs from unique 6-gene allele combinations
-# across the 658-strain dataset.
-#
-# Usage: python 09_provisional_st.py --workdir /data/scapitis
-# =============================================================
+# scapitis-mlst-validation
 
-import argparse
-from pathlib import Path
-from collections import defaultdict, Counter
-import csv
-import pandas as pd
-from Bio import SeqIO
+Six-gene versus seven-gene MLST comparison pipeline for *Staphylococcus capitis*
 
+## Overview
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--workdir", required=True)
-    parser.add_argument("--concat_658",
-                        default=None,
-                        help="Path to 658-strain concat FASTA")
-    parser.add_argument("--cgmlst_table",
-                        default=None,
-                        help="Wang 2022 cgMLST assignment table (CSV)")
-    parser.add_argument("--output", default=None)
-    args = parser.parse_args()
+Source code for:
 
-    workdir    = Path(args.workdir)
-    concat_658 = Path(args.concat_658) if args.concat_658 else \
-                 workdir / "concat_6gene" / "concat_6gene_658.fasta"
-    cgmlst_csv = Path(args.cgmlst_table) if args.cgmlst_table else \
-                 workdir / "wang2022_cgmlst_st.csv"
-    out_dir    = Path(args.output) if args.output else \
-                 workdir / "results"
-    out_dir.mkdir(parents=True, exist_ok=True)
+> Tsai M-S, Ling TZ. *Six-Gene versus Seven-Gene MLST for Staphylococcus capitis*:
+> Performance Comparison Against Whole-Genome SNP and Core-Genome MLST, with
+> Detection of Putative L-Clone-Affiliated Isolates in Taiwan. *Journal of
+> Clinical Microbiology* (submitted).
 
-    # Gene positions in 658-strain concat (from partition file)
-    GENE_POS = {
-        "femA": (0,   492),
-        "ftsZ": (492, 1010),
-        "gap":  (1010,1531),
-        "pyrH": (1531,2005),
-        "rpoB": (2005,2539),
-        "tuf":  (2539,3032),
-    }
-    GENES = ["femA","ftsZ","gap","pyrH","rpoB","tuf"]
+This pipeline compares the Song et al. (2019) six-gene MLST scheme for
+*Staphylococcus capitis* with the Wang et al. (2025) seven-gene scheme,
+using whole-genome SNP (wgSNP) analysis and core-genome MLST (cgMLST) as
+reference standards, across 658 genomes (620 public sequences + 29 YGH
+clinical isolates + 9 Song 2019 reference strains).
 
-    # Read sequences
-    print("Reading 658-strain concat...")
-    strain_seqs = {}
-    for rec in SeqIO.parse(str(concat_658), "fasta"):
-        seq = str(rec.seq).upper()
-        strain_seqs[rec.id] = {
-            g: seq[s:e] for g,(s,e) in GENE_POS.items()}
-    print(f"  Strains: {len(strain_seqs)}")
+The two schemes are **complementary rather than hierarchically ranked**.
+The six-gene scheme corresponds more closely to the wgSNP reference
+phylogeny; the seven-gene scheme agrees more closely with cgMLST lineage
+clusters. Which scheme appears "better" depends on the reference standard
+chosen, so both are reported.
 
-    # Build allele catalogue (frequency-based numbering)
-    print("Building allele catalogue...")
-    allele_cat = {}
-    for gene in GENES:
-        cnt = Counter(strain_seqs[s][gene]
-                      for s in strain_seqs)
-        allele_cat[gene] = {
-            seq: rank
-            for rank,(seq,_) in enumerate(cnt.most_common(), 1)}
-        print(f"  {gene}: {len(cnt)} unique alleles")
+---
 
-    # Assign allele profiles
-    strain_profile = {
-        s: tuple(allele_cat[g][seqs[g]] for g in GENES)
-        for s,seqs in strain_seqs.items()
-    }
+## ?? Read before running: three ways this analysis can silently go wrong
 
-    profile_strains = defaultdict(list)
-    for s,p in strain_profile.items():
-        profile_strains[p].append(s)
+### 1. Comparing the two schemes on different strain subsets
 
-    # Load cgMLST data
-    wang = pd.read_csv(str(cgmlst_csv))
-    wang["Accession"] = wang["Accession"].str.strip()
-    nrcs_a  = set(wang[wang["Wang_Cluster"]=="A"]["Accession"])
-    l_clone = set(wang[wang["Wang_ST"]==6]["Accession"])
+Concordance statistics are only comparable when computed on the **same
+set of strains**. An earlier version of this pipeline computed six-gene
+concordance on one subset and seven-gene concordance on another, which
+made the two ARI values non-comparable and produced misleading results.
 
-    # Sort profiles by cgMLST priority
-    def sort_key(item):
-        prof, strains = item
-        n_A   = sum(1 for s in strains if s in nrcs_a)
-        n_L   = sum(1 for s in strains if s in l_clone)
-        lnzr  = "GCA_000712995.1" in strains
-        return (-n_A, -(n_L + int(lnzr)), -len(strains))
+`11_cgmlst_concordance.py` enforces a single common strain set for every
+metric. Do not remove that behaviour.
 
-    sorted_profiles = sorted(profile_strains.items(),
-                             key=sort_key)
+### 2. Allele numbering is not portable between runs
 
-    # Build pST table
-    print("\nBuilding pST catalogue...")
-    rows = []
-    for pst_num, (profile, strains) in \
-            enumerate(sorted_profiles, 1):
-        wang_sub = wang[wang["Accession"].isin(strains)]
-        n_over   = len(wang_sub)
+A six-gene run on 620 genomes and a six-gene run on 658 genomes assign
+allele integers **independently**, because numbering is frequency-ranked
+within whichever dataset was processed. The same allele profile can
+therefore receive different pST labels in the two runs.
 
-        cg_top = "—"; st7_top = "—"
-        if n_over > 0:
-            cg_cnt  = wang_sub["Wang_Cluster"].value_counts()
-            st7_cnt = wang_sub["Wang_ST"].value_counts()
-            cg_top  = cg_cnt.index[0]
-            st7_top = f"ST{st7_cnt.index[0]}"
+`11_cgmlst_concordance.py` re-maps pST labels by matching
+**representative strains**, never by matching allele numbers, and aborts
+if it detects a conflict. Never merge outputs from two runs by allele
+number.
 
-        n_A  = sum(1 for s in strains if s in nrcs_a)
-        lnzr = "GCA_000712995.1" in strains
-        lin  = ("NRCS-A" if n_A == n_over and n_over > 0
-                else "L-clone" if lnzr else "")
+### 3. Truncated strain lists
 
-        rows.append({
-            "pST":           f"pST{pst_num}",
-            **{f"allele_{g}": str(profile[i])
-               for i,g in enumerate(GENES)},
-            "N_total":        len(strains),
-            "N_Wang_overlap": n_over,
-            "cgMLST_cluster": cg_top,
-            "7gene_ST":       st7_top,
-            "Lineage":        lin,
-            "strains":        ";".join(sorted(strains)[:5]),
-        })
+`pST_table_658_FINAL.csv` contains a `Rep_strains` column listing at most
+five representative strains per pST. That column exists for display in
+Supplementary Table S1 only. Expanding it into a per-strain table
+silently discards most of the dataset.
 
-    df = pd.DataFrame(rows)
-    out_csv = out_dir / "pST_table_658_FINAL.csv"
-    df.to_csv(str(out_csv), index=False)
+Use `pST_per_strain_658.csv`, written by `09_provisional_st.py`, for all
+downstream analysis.
 
-    print(f"  Total pSTs: {len(df)}")
-    print(f"  pST1 (NRCS-A): "
-          f"{df[df['pST']=='pST1']['N_total'].values[0]} strains")
-    print(f"\n✓ Saved: {out_csv}")
+### 4. Missing data at MLST loci (BLAST-based pipeline only)
 
+Some genomes have genuinely incomplete locus coverage at one or more of
+the seven MLST genes ??most notably 41 strains in the `ERR3378xxx`
+series, which are missing 6 of the 7 seven-gene loci, and DSM20326,
+which is missing `rluB`. **A strain with missing data at any locus must
+be excluded from ST assignment for that scheme, not assigned a spurious
+allele derived from an empty sequence.** Earlier iterations conflated
+"0 bp after stripping gaps/N" with "a real zero-length allele", which
+fragmented true alleles into many spurious ones. `04_extract_mlst.py`
+and `08_statistics.py` implement the correct exclusion logic (see the
+`has_missing_data` / `missing_loci` columns).
 
-if __name__ == "__main__":
-    main()
+**Note:** the seven-gene sequence types reported in the manuscript were
+not produced by this BLAST-based route. They come from allele calling
+performed from genome assemblies within MBioSEQ Ridom Typer, which
+returned a complete seven-locus profile for all 620 genomes and
+therefore recovered the 42 strains that this pipeline excludes. The
+exclusion logic above remains correct for the BLAST route.
+
+### 5. pandas and the string "NA"
+
+`pandas.read_csv()` treats the literal string `"NA"` as a missing-value
+marker by default and silently converts it to `NaN`. If you filter ST
+assignment tables on the string `"NA"`, read with
+`keep_default_na=False, na_values=[]` first, or the filter will silently
+match nothing.
+
+---
+
+## Repository structure
+
+```
+scapitis-mlst-validation/
+??? README.md
+??? LICENSE
+??? environment.yml                  # conda environment (pinned versions)
+??? requirements_python.txt          # pip packages (pinned)
+??? 01_download_sra.sh               # Download reads from SRA
+??? 02_assemble_genomes.sh           # de novo assembly (Shovill/SPAdes)
+??? 03_qc_check.sh                   # Assembly QC
+??? 04_extract_mlst.py               # BLAST-based MLST allele extraction
+??                                      (6-gene and 7-gene; handles missing data)
+??? 05_align_concat.sh               # MAFFT alignment + trimAl + concat
+??? 06_wgsnp_snippy.sh               # Whole-genome SNP analysis (Snippy)
+??? 07_phylogeny_iqtree.sh           # IQ-TREE2 ML trees
+??? 08_statistics.py                 # Mantel / RF / CID / PIS / bootstrap
+??? 09_provisional_st.py             # pST definition; writes the pST catalogue
+??                                      AND the per-strain assignment table
+??? 11_cgmlst_concordance.py         # Unified cgMLST concordance analysis:
+??                                      Simpson's D, ARI, adjusted Wallace,
+??                                      clonal complexes, NRCS-A and L-clone
+??                                      identification performance
+??? docs/
+??  ??? pipeline_overview.md
+??? expected_output/
+    ??? comparison_metrics_expected.csv
+```
+
+The cgMLST step itself is performed in MBioSEQ Ridom Typer, a commercial
+GUI application, and is therefore not scripted. The manuscript records
+the software version and scheme; `11_cgmlst_concordance.py` takes the
+Ridom Typer Excel export as input.
+
+---
+
+## Dependencies
+
+### Software
+
+| Software                 | Version         | Use                                 |
+| ------------------------ | --------------- | ----------------------------------- |
+| SRA Toolkit              | 3.0.5           | Download SRA reads                  |
+| Shovill                  | 1.1.0           | Genome assembly                     |
+| SPAdes                   | 3.15            | Assembler (via Shovill)             |
+| BLAST+                   | 2.13.0          | MLST allele extraction              |
+| MAFFT                    | 7.490           | Multiple sequence alignment         |
+| trimAl                   | 1.4.1           | Alignment trimming                  |
+| Snippy                   | 4.6.0           | Whole-genome SNP analysis           |
+| IQ-TREE2                 | 2.2.0           | Phylogenetic inference              |
+| MBioSEQ Ridom Typer      | 12.0.5 (2026/05)| cgMLST typing (commercial, GUI)     |
+| Python                   | 3.9             | Statistical analysis                |
+
+MBioSEQ Ridom Typer (Ridom GmbH, a Bruker company, M羹nster, Germany) was
+formerly marketed as Ridom SeqSphere+. The *S. capitis* cgMLST scheme
+used here comprises 1,492 targets.
+
+### Python packages (pinned)
+
+```
+biopython==1.79
+numpy==1.21.6
+scipy==1.7.3
+scikit-learn==1.0.2
+pandas==1.3.5
+matplotlib==3.5.3
+networkx==2.8.8
+openpyxl==3.0.10
+```
+
+**Why pinned, not `>=`:** an upgrade-sensitive default in
+`pandas.read_csv()` (silent string-to-`NaN` conversion of `"NA"`,
+described above) once caused a result to regress with no error or
+warning. `scikit-learn`'s `adjusted_rand_score` has also had minor
+behavioural changes across versions. Pinning exact versions is the only
+way to guarantee that a re-run reproduces the published numbers.
+
+---
+
+## Installation
+
+```bash
+git clone https://github.com/MoanShane/scapitis-mlst-validation.git
+cd scapitis-mlst-validation
+
+conda env create -f environment.yml
+conda activate scapitis_mlst
+```
+
+---
+
+## Usage
+
+```bash
+WORKDIR=/data/scapitis
+mkdir -p ${WORKDIR}/{reads,assemblies,mlst_6gene,mlst_7gene,wgsnp,trees,results}
+
+bash 01_download_sra.sh    ${WORKDIR}
+bash 02_assemble_genomes.sh ${WORKDIR}
+bash 03_qc_check.sh        ${WORKDIR}
+
+python 04_extract_mlst.py --assembly_dir ${WORKDIR}/assemblies \
+    --scheme 6gene --ref_dir reference_alleles \
+    --output_dir ${WORKDIR}/mlst_6gene
+python 04_extract_mlst.py --assembly_dir ${WORKDIR}/assemblies \
+    --scheme 7gene --ref_dir reference_alleles \
+    --output_dir ${WORKDIR}/mlst_7gene
+
+bash 05_align_concat.sh ${WORKDIR} 6gene
+bash 05_align_concat.sh ${WORKDIR} 7gene
+bash 06_wgsnp_snippy.sh ${WORKDIR}
+bash 07_phylogeny_iqtree.sh ${WORKDIR}
+
+python 08_statistics.py \
+    --tree_6gene ${WORKDIR}/trees/tree_6gene_620.treefile \
+    --tree_7gene ${WORKDIR}/trees/tree_7gene_620.treefile \
+    --tree_wgsnp ${WORKDIR}/wgsnp/wgsnp_620.treefile \
+    --st_6gene   ${WORKDIR}/mlst_6gene/st_assignments_final.csv \
+    --st_7gene   ${WORKDIR}/mlst_7gene/st_assignments_final.csv \
+    --output     ${WORKDIR}/results/
+
+python 09_provisional_st.py --workdir ${WORKDIR}
+
+# cgMLST typing is performed separately in MBioSEQ Ridom Typer;
+# export the project to .xlsx, then:
+python 11_cgmlst_concordance.py \
+    --ridom     Scapitis_620_cgMLST_SevenBatch.xlsx \
+    --pst       ${WORKDIR}/results/pST_per_strain_658.csv \
+    --pst_table ${WORKDIR}/results/pST_table_658_FINAL.csv \
+    --wang      wang2022_cgmlst_st.csv \
+    --outdir    ${WORKDIR}/results/
+```
+
+### Verifying your re-run
+
+Compare your output against
+`expected_output/comparison_metrics_expected.csv`, which lists the value
+of every metric **together with the N on which it was computed**. If your
+N differs, the metric is not comparable with the published value, whatever
+the number itself looks like.
+
+Key values to check:
+
+| Metric                                | Six-gene | Seven-gene | N   |
+| ------------------------------------- | -------- | ---------- | --- |
+| Mantel ? vs wgSNP                     | 0.9449   | 0.9334     | 619 |
+| Simpson's D                           | 0.598    | 0.608      | 613 |
+| ARI vs cgMLST cluster                 | 0.886    | 0.934      | 466 |
+| Adjusted Wallace ??cluster            | 0.927    | 0.997      | 466 |
+| NRCS-A sensitivity (clonal complex)   | 100.0%   | 99.4%      | 466 |
+| L-clone sensitivity                   | 100.0%   | 100.0%     | 619 |
+| L-clone specificity                   | 98.0%    | 100.0%     | 619 |
+
+---
+
+## Input data
+
+- Public genomes: BioProject PRJNA493527 and additional GenBank accessions
+  (Supplementary Table S2)
+- YGH clinical isolates: GenBank accessions PZ469898?Z470071
+- Reference genome (wgSNP): *S. capitis* subsp. *capitis* DSM20326
+  (GCF_040739495.1)
+- L-clone anchor strain: LNZR-1 (GCA_000712995.1)
+
+---
+
+## Output files
+
+| File                                    | Description                                             |
+| --------------------------------------- | ------------------------------------------------------- |
+| `concat_6gene_658.fasta`                | 6-gene alignment, 658 strains, 3,032 bp untrimmed       |
+| `concat_7gene_620.fasta`                | 7-gene alignment, 2,780 bp                              |
+| `st_assignments_final.csv`              | Per-strain ST with `has_missing_data` / `missing_loci`  |
+| `tree_6gene_620.treefile`               | ML tree, 6-gene scheme                                  |
+| `tree_7gene_620.treefile`               | ML tree, 7-gene scheme                                  |
+| `wgsnp_620.treefile`                    | ML tree, wgSNP (619 taxa after outgroup exclusion)      |
+| `results/comparison_metrics.csv`        | Topological and bootstrap metrics                       |
+| `results/pST_table_658_FINAL.csv`       | 91 provisional sequence types (display table)           |
+| `results/pST_per_strain_658.csv`        | **Per-strain pST ??use this for analysis**              |
+| `results/concordance_results.txt`       | Full concordance report                                 |
+| `results/master_620_four_schemes.csv`   | Per-strain pST, ST, cgST, cluster and L-clone status    |
+
+---
+
+## Citation
+
+> Tsai M-S, Ling TZ. *Six-Gene versus Seven-Gene MLST for Staphylococcus
+> capitis*: Performance Comparison Against Whole-Genome SNP and
+> Core-Genome MLST, with Detection of Putative L-Clone-Affiliated
+> Isolates in Taiwan. *Journal of Clinical Microbiology* (submitted).
+> DOI: [to be added on acceptance]
+
+Please cite the specific code version via its GitHub Release tag
+(`v2.0-jcm-revision`) rather than the `main` branch.
+
+---
+
+## License
+
+MIT License. See [LICENSE](LICENSE).
+
+---
+
+## Contact
+
+Moan-Shane Tsai, MD
+Division of Infectious Diseases
+Yuan's General Hospital
+Kaohsiung, Taiwan
