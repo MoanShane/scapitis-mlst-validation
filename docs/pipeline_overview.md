@@ -19,9 +19,33 @@ indirectly.
 | 05 | `05_align_concat.sh` | MAFFT alignment per locus, trimAl trimming, concatenation into a single multi-gene alignment |
 | 06 | `06_wgsnp_snippy.sh` | Whole-genome SNP calling against the DSM20326 reference using Snippy, followed by core-genome alignment |
 | 07 | `07_phylogeny_iqtree.sh` | Maximum-likelihood tree inference with IQ-TREE2 (ModelFinder + 1,000 ultrafast bootstrap) for all three datasets (6-gene, 7-gene, wgSNP) |
-| 08 | `08_statistics.py` | Nine-metric three-way comparison (Mantel, RF, normalised RF, CID, bootstrap support, resolution index, ARI vs cgMLST) |
-| 09 | `09_provisional_st.py` | Defines provisional sequence types (pST) from unique 6-gene allele combinations across all 658 strains |
-| 10–12 | `10_12_concordance_mst_tanglegram.py` | cgMLST concordance heatmap, minimum spanning tree figure, and 6-gene-vs-wgSNP tanglegram |
+| 08 | `08_statistics.py` | Topological and bootstrap comparison of the 6-gene, 7-gene and wgSNP trees (Mantel, RF, normalised RF, CID, bootstrap support, resolution index, PIS) |
+| 09 | `09_provisional_st.py` | Defines provisional sequence types (pST) from unique 6-gene allele combinations across all 658 strains, and writes the complete per-strain assignment table `pST_per_strain_658.csv` |
+| 11 | `11_cgmlst_concordance.py` | Unified cgMLST concordance analysis on a single common strain set: Simpson's index of diversity, adjusted Rand index, adjusted Wallace coefficient, goeBURST clonal complexes, and NRCS-A / L-clone identification performance |
+
+## Comparing schemes on a common strain set
+
+Concordance statistics are only comparable when computed on the same set
+of strains. An earlier version of this pipeline computed six-gene
+concordance on one subset of strains and seven-gene concordance on
+another, so the two adjusted Rand index values described different
+denominators and could not legitimately be compared. The former
+`10_12_concordance_mst_tanglegram.py` also expanded the truncated
+`Rep_strains` column of the pST catalogue into a per-strain table, which
+silently reduced the analysis set still further.
+
+Both problems are fixed. `09_provisional_st.py` now writes the complete
+per-strain table `pST_per_strain_658.csv`, and `11_cgmlst_concordance.py`
+enforces a single common strain set for every metric. The tanglegram step
+has been removed, as the corresponding figure is no longer part of the
+manuscript.
+
+A third, related pitfall concerns allele numbering. Allele integers are
+assigned by frequency rank within whichever dataset was processed, so a
+620-genome run and a 658-genome run produce different numbering and
+different pST labels for the same profile. `11_cgmlst_concordance.py`
+re-maps pST labels by matching representative strains, never by matching
+allele numbers, and aborts if it detects a conflict.
 
 ## Missing-data handling
 
@@ -119,6 +143,17 @@ Before reporting results from a re-run of this pipeline, confirm:
       `keep_default_na=False, na_values=[]`.
 - [ ] `comparison_metrics.csv` from step 08 matches
       `expected_output/comparison_metrics_expected.csv` within rounding
-      tolerance. In particular, seven-gene ARI vs cgMLST cluster should
-      be in the 0.92–0.93 range, not 0.75–0.80 — a value in the latter
-      range indicates the missing-data exclusion did not take effect.
+      tolerance. Check the `N` column as well as the value itself: a
+      metric computed on a different number of strains is not comparable
+      with the published figure, however close the number looks.
+- [ ] `pST_per_strain_658.csv` exists and contains one row per strain
+      (658 rows). If it is missing, or if any downstream script reads
+      the truncated `Rep_strains` column instead, the analysis set has
+      been silently reduced.
+- [ ] `11_cgmlst_concordance.py` completed without raising the pST
+      re-mapping error. That error means allele numbering from two
+      different runs has been mixed, and the pST labels do not
+      correspond.
+- [ ] Key values from step 11 on the published dataset: six-gene ARI vs
+      cgMLST cluster 0.886 and seven-gene 0.934 (N = 466); L-clone
+      n = 19, all seven-gene ST6, all carrying *ftsZ* allele 3.
