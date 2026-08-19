@@ -25,7 +25,7 @@ chosen, so both are reported.
 
 ---
 
-## ?? Read before running: three ways this analysis can silently go wrong
+## ⚠️ Read before running: three ways this analysis can silently go wrong
 
 ### 1. Comparing the two schemes on different strain subsets
 
@@ -62,7 +62,7 @@ downstream analysis.
 ### 4. Missing data at MLST loci (BLAST-based pipeline only)
 
 Some genomes have genuinely incomplete locus coverage at one or more of
-the seven MLST genes ??most notably 41 strains in the `ERR3378xxx`
+the seven MLST genes — most notably 41 strains in the `ERR3378xxx`
 series, which are missing 6 of the 7 seven-gene loci, and DSM20326,
 which is missing `rluB`. **A strain with missing data at any locus must
 be excluded from ST assignment for that scheme, not assigned a spurious
@@ -93,29 +93,29 @@ match nothing.
 
 ```
 scapitis-mlst-validation/
-??? README.md
-??? LICENSE
-??? environment.yml                  # conda environment (pinned versions)
-??? requirements_python.txt          # pip packages (pinned)
-??? 01_download_sra.sh               # Download reads from SRA
-??? 02_assemble_genomes.sh           # de novo assembly (Shovill/SPAdes)
-??? 03_qc_check.sh                   # Assembly QC
-??? 04_extract_mlst.py               # BLAST-based MLST allele extraction
-??                                      (6-gene and 7-gene; handles missing data)
-??? 05_align_concat.sh               # MAFFT alignment + trimAl + concat
-??? 06_wgsnp_snippy.sh               # Whole-genome SNP analysis (Snippy)
-??? 07_phylogeny_iqtree.sh           # IQ-TREE2 ML trees
-??? 08_statistics.py                 # Mantel / RF / CID / PIS / bootstrap
-??? 09_provisional_st.py             # pST definition; writes the pST catalogue
-??                                      AND the per-strain assignment table
-??? 11_cgmlst_concordance.py         # Unified cgMLST concordance analysis:
-??                                      Simpson's D, ARI, adjusted Wallace,
-??                                      clonal complexes, NRCS-A and L-clone
-??                                      identification performance
-??? docs/
-??  ??? pipeline_overview.md
-??? expected_output/
-    ??? comparison_metrics_expected.csv
+├── README.md
+├── LICENSE
+├── environment.yml                  # conda environment (pinned versions)
+├── requirements_python.txt          # pip packages (pinned)
+├── 01_download_sra.sh               # Download reads from SRA
+├── 02_assemble_genomes.sh           # de novo assembly (Shovill/SPAdes)
+├── 03_qc_check.sh                   # Assembly QC
+├── 04_extract_mlst.py               # BLAST-based MLST allele extraction
+│                                       (6-gene and 7-gene; handles missing data)
+├── 05_align_concat.sh               # MAFFT alignment + trimAl + concat
+├── 06_wgsnp_snippy.sh               # Whole-genome SNP analysis (Snippy)
+├── 07_phylogeny_iqtree.sh           # IQ-TREE2 ML trees
+├── 08_statistics.py                 # Mantel / RF / CID / PIS / bootstrap
+├── 09_provisional_st.py             # pST definition; writes the pST catalogue
+│                                       AND the per-strain assignment table
+├── 11_cgmlst_concordance.py         # Unified cgMLST concordance analysis:
+│                                       Simpson's D, ARI, adjusted Wallace,
+│                                       clonal complexes, NRCS-A and L-clone
+│                                       identification performance
+├── docs/
+│   └── pipeline_overview.md
+└── expected_output/
+    └── comparison_metrics_expected.csv
 ```
 
 The cgMLST step itself is performed in MBioSEQ Ridom Typer, a commercial
@@ -142,7 +142,7 @@ Ridom Typer Excel export as input.
 | MBioSEQ Ridom Typer      | 12.0.5 (2026/05)| cgMLST typing (commercial, GUI)     |
 | Python                   | 3.9             | Statistical analysis                |
 
-MBioSEQ Ridom Typer (Ridom GmbH, a Bruker company, M羹nster, Germany) was
+MBioSEQ Ridom Typer (Ridom GmbH, a Bruker company, Münster, Germany) was
 formerly marketed as Ridom SeqSphere+. The *S. capitis* cgMLST scheme
 used here comprises 1,492 targets.
 
@@ -234,10 +234,10 @@ Key values to check:
 
 | Metric                                | Six-gene | Seven-gene | N   |
 | ------------------------------------- | -------- | ---------- | --- |
-| Mantel ? vs wgSNP                     | 0.9449   | 0.9334     | 619 |
+| Mantel ρ vs wgSNP                     | 0.9449   | 0.9334     | 619 |
 | Simpson's D                           | 0.598    | 0.608      | 613 |
 | ARI vs cgMLST cluster                 | 0.886    | 0.934      | 466 |
-| Adjusted Wallace ??cluster            | 0.927    | 0.997      | 466 |
+| Adjusted Wallace → cluster            | 0.927    | 0.997      | 466 |
 | NRCS-A sensitivity (clonal complex)   | 100.0%   | 99.4%      | 466 |
 | L-clone sensitivity                   | 100.0%   | 100.0%     | 619 |
 | L-clone specificity                   | 98.0%    | 100.0%     | 619 |
@@ -248,7 +248,7 @@ Key values to check:
 
 - Public genomes: BioProject PRJNA493527 and additional GenBank accessions
   (Supplementary Table S2)
-- YGH clinical isolates: GenBank accessions PZ469898?Z470071
+- YGH clinical isolates: GenBank accessions PZ469898–PZ470071
 - Reference genome (wgSNP): *S. capitis* subsp. *capitis* DSM20326
   (GCF_040739495.1)
 - L-clone anchor strain: LNZR-1 (GCA_000712995.1)
@@ -267,7 +267,7 @@ Key values to check:
 | `wgsnp_620.treefile`                    | ML tree, wgSNP (619 taxa after outgroup exclusion)      |
 | `results/comparison_metrics.csv`        | Topological and bootstrap metrics                       |
 | `results/pST_table_658_FINAL.csv`       | 91 provisional sequence types (display table)           |
-| `results/pST_per_strain_658.csv`        | **Per-strain pST ??use this for analysis**              |
+| `results/pST_per_strain_658.csv`        | **Per-strain pST — use this for analysis**              |
 | `results/concordance_results.txt`       | Full concordance report                                 |
 | `results/master_620_four_schemes.csv`   | Per-strain pST, ST, cgST, cluster and L-clone status    |
 
