@@ -155,5 +155,5 @@ Before reporting results from a re-run of this pipeline, confirm:
       different runs has been mixed, and the pST labels do not
       correspond.
 - [ ] Key values from step 11 on the published dataset: six-gene ARI vs
-      cgMLST cluster 0.886 and seven-gene 0.934 (N = 466); L-clone
+      cgMLST cluster 0.884 and seven-gene 0.935 (N = 602); L-clone
       n = 19, all seven-gene ST6, all carrying *ftsZ* allele 3.
