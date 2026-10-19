@@ -32,7 +32,7 @@ def main():
     concat_658 = Path(args.concat_658) if args.concat_658 else \
                  workdir / "concat_6gene" / "concat_6gene_658.fasta"
     cgmlst_csv = Path(args.cgmlst_table) if args.cgmlst_table else \
-                 workdir / "wang2022_cgmlst_st.csv"
+                 workdir / "wang2022_cgmlst_st_466.csv"
     out_dir    = Path(args.output) if args.output else \
                  workdir / "results"
     out_dir.mkdir(parents=True, exist_ok=True)

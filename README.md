@@ -208,9 +208,13 @@ python 08_statistics.py \
     --tree_wgsnp ${WORKDIR}/wgsnp/wgsnp_620.treefile \
     --st_6gene   ${WORKDIR}/mlst_6gene/st_assignments_final.csv \
     --st_7gene   ${WORKDIR}/mlst_7gene/st_assignments_final.csv \
+    --cgmlst     wang2022_cgmlst_clusters_602.csv \
     --output     ${WORKDIR}/results/
 
-python 09_provisional_st.py --workdir ${WORKDIR}
+# NOTE: 09 must keep the frozen 466-label file; the pST numbers in
+# Supplementary Table S1, Figure 1 and Tables 2-3 derive from it.
+python 09_provisional_st.py --workdir ${WORKDIR} \
+    --cgmlst_table wang2022_cgmlst_st_466.csv
 
 # cgMLST typing is performed separately in MBioSEQ Ridom Typer;
 # export the project to .xlsx, then:
@@ -218,7 +222,7 @@ python 11_cgmlst_concordance.py \
     --ridom     Scapitis_620_cgMLST_SevenBatch.xlsx \
     --pst       ${WORKDIR}/results/pST_per_strain_658.csv \
     --pst_table ${WORKDIR}/results/pST_table_658_FINAL.csv \
-    --wang      wang2022_cgmlst_st.csv \
+    --wang      wang2022_cgmlst_clusters_602.csv \
     --outdir    ${WORKDIR}/results/
 ```
 

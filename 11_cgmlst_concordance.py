@@ -33,7 +33,7 @@
 #       --ridom   Scapitis_620_cgMLST_SevenBatch.xlsx \
 #       --pst     results/pST_per_strain_620.csv \
 #       --pst_table results/pST_table_658_FINAL.csv \
-#       --wang    wang2022_cgmlst_st.csv \
+#       --wang    wang2022_cgmlst_clusters_602.csv \
 #       --outdir  results/
 #
 # IMPORTANT — allele numbering is NOT portable
