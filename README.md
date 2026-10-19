@@ -236,11 +236,11 @@ Key values to check:
 | ------------------------------------- | -------- | ---------- | --- |
 | Mantel ρ vs wgSNP                     | 0.9449   | 0.9334     | 619 |
 | Simpson's D                           | 0.598    | 0.608      | 613 |
-| ARI vs cgMLST cluster                 | 0.886    | 0.934      | 466 |
-| Adjusted Wallace → cluster            | 0.927    | 0.997      | 466 |
-| NRCS-A sensitivity (clonal complex)   | 100.0%   | 99.4%      | 466 |
-| L-clone sensitivity                   | 100.0%   | 100.0%     | 619 |
-| L-clone specificity                   | 98.0%    | 100.0%     | 619 |
+| ARI vs cgMLST cluster                 | 0.884    | 0.935      | 602 |
+| Adjusted Wallace → cluster            | 0.917    | 0.987      | 602 |
+| NRCS-A sensitivity (clonal complex)   | 99.7%    | 99.5%      | 602 |
+| L-clone sensitivity                   | 100.0%   | 100.0%     | 602 |
+| L-clone specificity                   | 98.1%    | 100.0%     | 602 |
 
 ---
 

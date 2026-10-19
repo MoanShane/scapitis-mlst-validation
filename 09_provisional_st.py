@@ -79,7 +79,24 @@ def main():
         profile_strains[p].append(s)
 
     # Load cgMLST data
+    #
+    # FROZEN INPUT — DO NOT substitute the 602-label file here.
+    #
+    # pST numbers are assigned by sort order (see sort_key below), and
+    # sort_key counts Cluster A members taken from this file. Running this
+    # script against wang2022_cgmlst_clusters_602.csv therefore RENUMBERS
+    # the catalogue and breaks every published pST label (Supplementary
+    # Table S1, Figure 1, Tables 2-3, and the manuscript text).
+    #
+    # The published catalogue was built on wang2022_cgmlst_st_466.csv and
+    # that file must stay the input to this script. The 602-label file is
+    # used only by 08_statistics.py and 11_cgmlst_concordance.py.
     wang = pd.read_csv(str(cgmlst_csv))
+    if len(wang) != 466:
+        raise SystemExit(
+            f"09_provisional_st.py expects the 466-label reference file "
+            f"(wang2022_cgmlst_st_466.csv); got {len(wang)} rows. The pST "
+            f"catalogue is frozen -- see the comment above.")
     wang["Accession"] = wang["Accession"].str.strip()
     nrcs_a  = set(wang[wang["Wang_Cluster"]=="A"]["Accession"])
     # NOTE: Wang et al. (2022) assigned no cluster label to the L-clone,

@@ -21,6 +21,12 @@
 #                complexes.
 #   --wang       Wang et al. (2022) cluster labels
 #                (Accession,Wang_Cluster,Wang_ST,...)
+#                Use wang2022_cgmlst_clusters_602.csv -- the full set of
+#                published cluster labels (602 of the 619 ingroup genomes,
+#                8 clusters: A, B, Basal, C, D, E, F, L). The older
+#                wang2022_cgmlst_st_466.csv covers only 466 genomes and 6
+#                clusters; it is kept solely as the frozen input to
+#                09_provisional_st.py and must not be used here.
 #
 # Usage
 #   python 11_cgmlst_concordance.py \
@@ -265,7 +271,10 @@ def main():
     P("       dominated by the difference in granularity; report the")
     P("       directional adjusted Wallace coefficient instead.")
     for a, b in [("cgST", "pST"), ("cgST", "ST7")]:
-        P(f"  AW cgMLST -> {b}: {adj_wallace(fine[a], fine[b]):.4f}")
+        aw = adj_wallace(fine[a], fine[b])
+        lo, hi = boot_ci(lambda x, y: adj_wallace(x, y),
+                         fine[a].values, fine[b].values)
+        P(f"  AW cgMLST -> {b}: {aw:.4f} ({lo:.4f}-{hi:.4f})")
 
     for tag, col in [("STRICT", "Wang_Cluster")]:
         df = m.dropna(subset=["pST", "ST7", col]).rename(columns={col: "cl"})
@@ -273,8 +282,13 @@ def main():
         for name, c in [("6-gene pST", "pST"), ("6-gene CC", "CC6"),
                         ("7-gene ST", "ST7"), ("7-gene CC", "CC7")]:
             ari = adjusted_rand_score(df["cl"], df[c])
+            lo, hi = boot_ci(adjusted_rand_score, df["cl"].values, df[c].values)
             aw = adj_wallace(df[c], df["cl"])
-            P(f"  {name:<12} levels {df[c].nunique():>3}  ARI {ari:.4f}  AW->cluster {aw:.4f}")
+            awlo, awhi = boot_ci(lambda x, y: adj_wallace(y, x),
+                                 df["cl"].values, df[c].values)
+            P(f"  {name:<12} levels {df[c].nunique():>3}  "
+              f"ARI {ari:.4f} ({lo:.4f}-{hi:.4f})  "
+              f"AW->cluster {aw:.4f} ({awlo:.4f}-{awhi:.4f})")
 
         truth = (df["cl"] == "A").values
         ccA6 = df[df["pST"] == "pST1"]["CC6"].mode()[0]
@@ -289,17 +303,30 @@ def main():
             P(f"{nm:<26}{r['TP']:>4}{r['FP']:>4}{r['FN']:>4}{r['TN']:>5}"
               f"{r['sens']:>22}{r['spec']:>22}{r['ppv']:>7}")
 
-    truth = m["Lclone"].values
+    # The L-clone panel is restricted to the genomes carrying a published
+    # cluster label, so that its denominator matches panels [3] and [4].
+    ml = m.dropna(subset=["Wang_Cluster"]).copy()
+    truth = ml["Lclone"].values
     ftsz_l = int(tab[tab["pST"] == "pST11"]["ftsZ"].values[0])
     ftsz_psts = set(tab[tab["ftsZ"] == ftsz_l]["pST"])
-    P(f"\n[5] L-clone identification (cgMLST-defined, n = {truth.sum()} of {len(m)})")
-    P(f"    definition: <= {LCLONE_MAX_DIST} cgMLST allelic differences from {LNZR1}")
+    P(f"\n[5] L-clone identification (n = {truth.sum()} of {len(ml)})")
+    P(f"    operational definition: <= {LCLONE_MAX_DIST} cgMLST allelic "
+      f"differences from {LNZR1}")
     nxt = sorted(m.loc[~m['Lclone'], 'dist_LNZR1'])[0]
     P(f"    next closest genome differs at {nxt} alleles -> boundary unambiguous")
+    if "L" in set(ml["Wang_Cluster"].dropna()):
+        pub = set(ml.loc[ml["Wang_Cluster"] == "L", "accession"])
+        ope = set(ml.loc[ml["Lclone"], "accession"])
+        P("    published Cluster L vs operational definition: "
+          + ("identical" if pub == ope else
+             f"DIFFER (published {len(pub)}, operational {len(ope)}, "
+             f"shared {len(pub & ope)})"))
+    else:
+        P("    no published Cluster L label in the reference file")
     P(f"{'predictor':<26}{'TP':>4}{'FP':>4}{'FN':>4}{'TN':>5}{'sens':>22}{'spec':>22}{'PPV':>7}")
-    for nm, pr in [("6-gene pST11", m["pST"] == "pST11"),
-                   (f"6-gene ftsZ allele {ftsz_l}", m["pST"].isin(ftsz_psts)),
-                   ("7-gene ST6", m["ST7"] == "ST6")]:
+    for nm, pr in [("6-gene pST11", ml["pST"] == "pST11"),
+                   (f"6-gene ftsZ allele {ftsz_l}", ml["pST"].isin(ftsz_psts)),
+                   ("7-gene ST6", ml["ST7"] == "ST6")]:
         r = perf(pr.values, truth)
         P(f"{nm:<26}{r['TP']:>4}{r['FP']:>4}{r['FN']:>4}{r['TN']:>5}"
           f"{r['sens']:>22}{r['spec']:>22}{r['ppv']:>7}")
