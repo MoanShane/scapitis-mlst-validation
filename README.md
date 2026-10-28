@@ -6,10 +6,10 @@ Six-gene versus seven-gene MLST comparison pipeline for *Staphylococcus capitis*
 
 Source code for:
 
-> Tsai M-S, Yang T-L, Lin C-M, Song Y-S, Lin S-W, Hsu C-C. Complementary
-> Performance of Six-Gene and Seven-Gene MLST Schemes for *Staphylococcus
-> capitis* Assessed against Whole-Genome SNP and Core-Genome MLST Analyses.
-> *Journal of Clinical Microbiology* (submitted).
+> Tsai M-S, Ling TZ. *Six-Gene versus Seven-Gene MLST for Staphylococcus capitis*:
+> Performance Comparison Against Whole-Genome SNP and Core-Genome MLST, with
+> Detection of Putative L-Clone-Affiliated Isolates in Taiwan. *Journal of
+> Clinical Microbiology* (submitted).
 
 This pipeline compares the Song et al. (2019) six-gene MLST scheme for
 *Staphylococcus capitis* with the Wang et al. (2025) seven-gene scheme,
@@ -118,7 +118,7 @@ scapitis-mlst-validation/
     └── comparison_metrics_expected.csv
 ```
 
-The cgMLST step itself is performed in MBioSEQ Ridom Typer, a commercial
+The cgMLST step itself was performed in MBioSEQ Ridom Typer, a commercial
 GUI application, and is therefore not scripted. The manuscript records
 the software version and scheme; `11_cgmlst_concordance.py` takes the
 Ridom Typer Excel export as input.
@@ -143,8 +143,15 @@ Ridom Typer Excel export as input.
 | Python                   | 3.9             | Statistical analysis                |
 
 MBioSEQ Ridom Typer (Ridom GmbH, a Bruker company, Münster, Germany) was
-formerly marketed as Ridom SeqSphere+. The *S. capitis* cgMLST scheme
-used here comprises 1,492 targets.
+formerly marketed as Ridom SeqSphere+. The 1,492-target *S. capitis* cgMLST
+scheme it implements is the one published by Wang et al. (2022, *Nat Commun*
+13:4254); Ridom Typer is the software that applies it.
+
+The project export, `Scapitis_620_cgMLST_2026.xlsx`, is included in this
+repository with the permission of Ridom GmbH. If you reuse it, please cite the
+software as the vendor asks — Jünemann S, et al. 2013. Updating benchtop
+sequencing performance comparison. *Nat Biotechnol* 31:294–296 — and the
+cgMLST scheme to Wang et al.
 
 ### Python packages (pinned)
 
@@ -219,7 +226,7 @@ python 09_provisional_st.py --workdir ${WORKDIR} \
 # cgMLST typing is performed separately in MBioSEQ Ridom Typer;
 # export the project to .xlsx, then:
 python 11_cgmlst_concordance.py \
-    --ridom     Scapitis_620_cgMLST_SevenBatch.xlsx \
+    --ridom     Scapitis_620_cgMLST_2026.xlsx \
     --pst       ${WORKDIR}/results/pST_per_strain_658.csv \
     --pst_table ${WORKDIR}/results/pST_table_658_FINAL.csv \
     --wang      wang2022_cgmlst_clusters_602.csv \
@@ -279,14 +286,14 @@ Key values to check:
 
 ## Citation
 
-> Tsai M-S, Yang T-L, Lin C-M, Song Y-S, Lin S-W, Hsu C-C. Complementary
-> Performance of Six-Gene and Seven-Gene MLST Schemes for *Staphylococcus
-> capitis* Assessed against Whole-Genome SNP and Core-Genome MLST Analyses.
-> *Journal of Clinical Microbiology* (submitted).
+> Tsai M-S, Ling TZ. *Six-Gene versus Seven-Gene MLST for Staphylococcus
+> capitis*: Performance Comparison Against Whole-Genome SNP and
+> Core-Genome MLST, with Detection of Putative L-Clone-Affiliated
+> Isolates in Taiwan. *Journal of Clinical Microbiology* (submitted).
 > DOI: [to be added on acceptance]
 
 Please cite the specific code version via its GitHub Release tag
-(`v3.0.1-n602`) rather than the `main` branch.
+(`v2.0-jcm-revision`) rather than the `main` branch.
 
 ---
 
