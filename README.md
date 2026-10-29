@@ -53,7 +53,7 @@ number.
 
 `pST_table_658_FINAL.csv` contains a `Rep_strains` column listing at most
 five representative strains per pST. That column exists for display in
-Supplementary Table S1 only. Expanding it into a per-strain table
+Supplementary Table S3 only. Expanding it into a per-strain table
 silently discards most of the dataset.
 
 Use `pST_per_strain_658.csv`, written by `09_provisional_st.py`, for all
@@ -219,7 +219,7 @@ python 08_statistics.py \
     --output     ${WORKDIR}/results/
 
 # NOTE: 09 must keep the frozen 466-label file; the pST numbers in
-# Supplementary Table S1, Figure 1 and Tables 2-3 derive from it.
+# Supplementary Table S3, Figure 1 and Tables 2-3 derive from it.
 python 09_provisional_st.py --workdir ${WORKDIR} \
     --cgmlst_table wang2022_cgmlst_st_466.csv
 
@@ -258,7 +258,7 @@ Key values to check:
 ## Input data
 
 - Public genomes: BioProject PRJNA493527 and additional GenBank accessions
-  (Supplementary Table S2)
+  (Supplementary Table S1)
 - YGH clinical isolates: GenBank accessions PZ469898–PZ470071
 - Reference genome (wgSNP): *S. capitis* subsp. *capitis* DSM20326
   (GCF_040739495.1)

@@ -86,7 +86,7 @@ def main():
     # sort_key counts Cluster A members taken from this file. Running this
     # script against wang2022_cgmlst_clusters_602.csv therefore RENUMBERS
     # the catalogue and breaks every published pST label (Supplementary
-    # Table S1, Figure 1, Tables 2-3, and the manuscript text).
+    # Table S3, Figure 1, Tables 2-3, and the manuscript text).
     #
     # The published catalogue was built on wang2022_cgmlst_st_466.csv and
     # that file must stay the input to this script. The 602-label file is
@@ -146,7 +146,7 @@ def main():
             "cgMLST_cluster": cg_top,
             "7gene_ST":       st7_top,
             "Lineage":        lin,
-            # Representative strains for display in Supplementary Table S1.
+            # Representative strains for display in Supplementary Table S3.
             # TRUNCATED ON PURPOSE - never use this column for analysis.
             "Rep_strains":    ",".join(sorted(strains)[:5]),
         })
