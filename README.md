@@ -6,10 +6,10 @@ Six-gene versus seven-gene MLST comparison pipeline for *Staphylococcus capitis*
 
 Source code for:
 
-> Tsai M-S, Ling TZ. *Six-Gene versus Seven-Gene MLST for Staphylococcus capitis*:
-> Performance Comparison Against Whole-Genome SNP and Core-Genome MLST, with
-> Detection of Putative L-Clone-Affiliated Isolates in Taiwan. *Journal of
-> Clinical Microbiology* (submitted).
+> Tsai MS, Yang TL, Lin CM, Song YS, Lin SW, Hsu CC. Complementary Performance
+> of Six-Gene and Seven-Gene MLST Schemes for *Staphylococcus capitis* Assessed
+> against Whole-Genome SNP and Core-Genome MLST Analyses. *Journal of Clinical
+> Microbiology* (submitted).
 
 This pipeline compares the Song et al. (2019) six-gene MLST scheme for
 *Staphylococcus capitis* with the Wang et al. (2025) seven-gene scheme,
@@ -286,14 +286,15 @@ Key values to check:
 
 ## Citation
 
-> Tsai M-S, Ling TZ. *Six-Gene versus Seven-Gene MLST for Staphylococcus
-> capitis*: Performance Comparison Against Whole-Genome SNP and
-> Core-Genome MLST, with Detection of Putative L-Clone-Affiliated
-> Isolates in Taiwan. *Journal of Clinical Microbiology* (submitted).
+> Tsai MS, Yang TL, Lin CM, Song YS, Lin SW, Hsu CC. Complementary
+> Performance of Six-Gene and Seven-Gene MLST Schemes for *Staphylococcus
+> capitis* Assessed against Whole-Genome SNP and Core-Genome MLST
+> Analyses. *Journal of Clinical Microbiology* (submitted).
 > DOI: [to be added on acceptance]
 
 Please cite the specific code version via its GitHub Release tag
-(`v2.0-jcm-revision`) rather than the `main` branch.
+(`v3.1.1-n602`) rather than the `main` branch. That tag holds the code and
+data exports underlying the submitted manuscript.
 
 ---
 
