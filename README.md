@@ -8,8 +8,7 @@ Source code for:
 
 > Tsai MS, Yang TL, Lin CM, Song YS, Lin SW, Hsu CC. Complementary Performance
 > of Six-Gene and Seven-Gene MLST Schemes for *Staphylococcus capitis* Assessed
-> against Whole-Genome SNP and Core-Genome MLST Analyses. *Journal of Clinical
-> Microbiology* (submitted).
+> against Whole-Genome SNP and Core-Genome MLST Analyses. Manuscript submitted.
 
 This pipeline compares the Song et al. (2019) six-gene MLST scheme for
 *Staphylococcus capitis* with the Wang et al. (2025) seven-gene scheme,
@@ -289,8 +288,8 @@ Key values to check:
 > Tsai MS, Yang TL, Lin CM, Song YS, Lin SW, Hsu CC. Complementary
 > Performance of Six-Gene and Seven-Gene MLST Schemes for *Staphylococcus
 > capitis* Assessed against Whole-Genome SNP and Core-Genome MLST
-> Analyses. *Journal of Clinical Microbiology* (submitted).
-> DOI: [to be added on acceptance]
+> Analyses. Manuscript submitted.
+> Journal and DOI to be added on acceptance.
 
 Please cite the specific code version via its GitHub Release tag
 (`v3.1.1-n602`) rather than the `main` branch. That tag holds the code and
